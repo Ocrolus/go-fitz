@@ -613,12 +613,17 @@ type BoundingBox struct {
 
 type Span struct {
 	Text string      `json:"text"`
-	BBox BoundingBox `json"bbox"`
+	BBox BoundingBox `json:"bbox"`
+}
+
+type Line struct {
+	BBox  BoundingBox `json:"bbox"`
+	Spans []Span      `json:"spans"`
 }
 
 type Block struct {
-	Number int      `json:"number"`
-	Lines  [][]Span `json:"spans"`
+	Number int    `json:"number"`
+	Lines  []Line `json:"line"`
 }
 
 func (f *Document) WordBlocks(pageNumber int) ([]Block, error) {
@@ -653,7 +658,6 @@ func (f *Document) WordBlocks(pageNumber int) ([]Block, error) {
 	defer C.fz_drop_buffer(f.ctx, buf)
 
 	i := -1
-	// runtime.Breakpoint()
 	for block := tpage.first_block; block != nil; block = block.next {
 		i++
 
@@ -683,7 +687,7 @@ func (f *Document) WordBlocks(pageNumber int) ([]Block, error) {
 
 			blockResult.Lines = append(
 				blockResult.Lines,
-				f.loadSpans(line, buf, pageRect),
+				f.loadLine(line, buf, pageRect),
 			)
 		}
 
@@ -693,15 +697,25 @@ func (f *Document) WordBlocks(pageNumber int) ([]Block, error) {
 	return blocks, nil
 }
 
-func (f *Document) loadSpans(
+func rectToBBox(rect C.fz_rect) BBox {
+	return BoundingBox{
+		X0: float32(rect.x0),
+		X1: float32(rect.x1),
+		Y0: float32(rect.y0),
+		Y1: float32(rect.y1),
+	}
+}
+
+func (f *Document) loadLine(
 	line *C.fz_stext_line,
 	buf *C.fz_buffer,
 	pageRect C.fz_rect,
 ) []Span {
 	C.fz_clear_buffer(f.ctx, buf)
 
-	// line_rect := C.fz_empty_rect
+	lineRect := C.fz_empty_rect
 	spanRect := C.fz_empty_rect
+	var line Line
 
 	type Style struct {
 		Font  string
@@ -713,7 +727,6 @@ func (f *Document) loadSpans(
 		Size:  -1,
 		Color: -1,
 	}
-	var spans []Span
 	for ch := line.first_char; ch != nil; ch = ch.next {
 		rect := C.fz_rect_from_quad(C.char_quad(f.ctx, line, ch))
 		if C.fz_contains_rect(pageRect, rect) == 0 &&
@@ -736,15 +749,11 @@ func (f *Document) loadSpans(
 				text := C.GoStringN(C.fz_string_from_buffer(f.ctx, buf), C.int(size))
 				span := Span{
 					Text: text,
-					BBox: BoundingBox{
-						X0: float32(spanRect.x0),
-						X1: float32(spanRect.x1),
-						Y0: float32(spanRect.y0),
-						Y1: float32(spanRect.y1),
-					},
+					BBox: rectToBBox(spanRect),
 				}
 				C.fz_clear_buffer(f.ctx, buf)
-				spans = append(spans, span)
+				lineRect = C.fz_union_rect(lineRect, spanRect)
+				line.Spans = append(line.Spans, span)
 			}
 
 			spanRect = rect
@@ -760,18 +769,16 @@ func (f *Document) loadSpans(
 		text := C.GoStringN(C.fz_string_from_buffer(f.ctx, buf), C.int(size))
 		span := Span{
 			Text: text,
-			BBox: BoundingBox{
-				X0: float32(spanRect.x0),
-				X1: float32(spanRect.x1),
-				Y0: float32(spanRect.y0),
-				Y1: float32(spanRect.y1),
-			},
+			BBox: rectToBBox(spanRect),
 		}
 		C.fz_clear_buffer(f.ctx, buf)
 
-		spans = append(spans, span)
+		lineRect = C.fz_union_rect(lineRect, spanRect)
+		line.Spans = append(line.Spans, span)
 	}
-	return spans
+
+	line.BBox = rectToBBox(lineRect)
+	return line
 }
 
 // Close closes the underlying fitz document.
