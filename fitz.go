@@ -697,7 +697,7 @@ func (f *Document) WordBlocks(pageNumber int) ([]Block, error) {
 	return blocks, nil
 }
 
-func rectToBBox(rect C.fz_rect) BBox {
+func rectToBBox(rect C.fz_rect) BoundingBox {
 	return BoundingBox{
 		X0: float32(rect.x0),
 		X1: float32(rect.x1),
@@ -710,12 +710,12 @@ func (f *Document) loadLine(
 	line *C.fz_stext_line,
 	buf *C.fz_buffer,
 	pageRect C.fz_rect,
-) []Span {
+) Line {
 	C.fz_clear_buffer(f.ctx, buf)
 
 	lineRect := C.fz_empty_rect
 	spanRect := C.fz_empty_rect
-	var line Line
+	var goLine Line
 
 	type Style struct {
 		Font  string
@@ -753,7 +753,7 @@ func (f *Document) loadLine(
 				}
 				C.fz_clear_buffer(f.ctx, buf)
 				lineRect = C.fz_union_rect(lineRect, spanRect)
-				line.Spans = append(line.Spans, span)
+				goLine.Spans = append(goLine.Spans, span)
 			}
 
 			spanRect = rect
@@ -774,11 +774,11 @@ func (f *Document) loadLine(
 		C.fz_clear_buffer(f.ctx, buf)
 
 		lineRect = C.fz_union_rect(lineRect, spanRect)
-		line.Spans = append(line.Spans, span)
+		goLine.Spans = append(goLine.Spans, span)
 	}
 
-	line.BBox = rectToBBox(lineRect)
-	return line
+	goLine.BBox = rectToBBox(lineRect)
+	return goLine
 }
 
 // Close closes the underlying fitz document.
