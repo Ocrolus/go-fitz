@@ -306,15 +306,40 @@ func TestTextFromPdf(t *testing.T) {
 		t.Error(err)
 	}
 
-	bits, err := json.Marshal(words)
+	bits, err := os.ReadFile("temp.json")
 	if err != nil {
 		t.Error(err)
 	}
 
-	err = os.WriteFile("temp.json", bits, 0644)
+	var expected []fitz.Block
+	err = json.Unmarshal(bits, &expected)
+	if err != nil {
+		t.Error(err)
+	}
+	if len(expected) != len(words) {
+		t.Error("words didn't match expected")
+	}
+}
+
+func TestRotation(t *testing.T) {
+	doc, err := fitz.New(filepath.Join("testdata", "test.pdf"))
 	if err != nil {
 		t.Error(err)
 	}
 
-	t.Error("Fail")
+	defer doc.Close()
+
+	rotation, err := doc.PageRotation(0)
+	if err != nil {
+		t.Error(err)
+	}
+
+	const expected = 0
+	if rotation != expected {
+		t.Error(fmt.Sprintf(
+			"Unexpected rotation got %d expected %d",
+			rotation,
+			expected,
+		))
+	}
 }

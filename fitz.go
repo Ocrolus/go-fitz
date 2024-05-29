@@ -7,6 +7,8 @@ package fitz
 
 #include <mupdf/fitz.h>
 #include <mupdf/fitz/structured-text.h>
+#include <mupdf/pdf/page.h>
+#include <mupdf/pdf/object.h>
 #include <stdlib.h>
 #include <pthread.h>
 #include "quad.h"
@@ -82,6 +84,17 @@ fz_locks_context_t* create_fz_locks_context(pthread_mutex_t* mutex) {
 // value.
 int stext_block_type(fz_stext_block *block) {
 	return block->type;
+}
+
+// Need to be in C since this call requires a macro to run
+int page_rotation(fz_context *ctx, pdf_page *page) {
+    int rotate = 0;
+    fz_try(ctx) {
+        rotate = pdf_to_int(ctx,
+                pdf_dict_get_inheritable(ctx, page->obj, PDF_NAME(Rotate)));
+    }
+    fz_catch(ctx) return -1;
+    return rotate;
 }
 */
 import "C"
@@ -779,6 +792,30 @@ func (f *Document) loadLine(
 
 	goLine.BBox = rectToBBox(lineRect)
 	return goLine
+}
+
+func (f *Document) PageRotation(pageNumber int) (int, error) {
+	f.mtx.Lock()
+	defer f.mtx.Unlock()
+
+	if pageNumber >= f.NumPage() {
+		return 0, ErrPageMissing
+	}
+
+	page := C.fz_load_page(f.ctx, f.doc, C.int(pageNumber))
+	defer C.fz_drop_page(f.ctx, page)
+
+	pdfPage := C.pdf_page_from_fz_page(f.ctx, page)
+	if pdfPage == nil {
+		return 0, errors.New("Document isn't PDF")
+	}
+
+	rotation := int(C.page_rotation(f.ctx, pdfPage))
+	if rotation < 0 {
+		return rotation, errors.New("Failed to pull rotation")
+	}
+
+	return rotation, nil
 }
 
 // Close closes the underlying fitz document.
